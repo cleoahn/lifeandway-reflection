@@ -8,6 +8,7 @@
 <title>생각을 내 것으로 · 성찰 편집실</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="./assets/cloud.css">
+<link rel="stylesheet" href="./assets/images.css?v=3-images">
 </head>
 <body>
 <div class="wrap">
@@ -77,6 +78,14 @@
         <label class="field"><span>키워드 (쉼표로 구분)</span><input id="tags" placeholder="예: 강의, 커리어, 성장"></label>
       </div>
 
+      <section class="image-section" aria-labelledby="imagesTitle">
+        <div class="row between"><strong id="imagesTitle">나만의 사진과 그림 (선택)</strong><span id="imageCount" class="hint">0 / 3</span></div>
+        <p class="hint">JPG·PNG·WebP 원본 20MB 이하, 최대 3장. 최대 1600px·1MiB 이하로 변환해 위치 등 원본 메타데이터를 제거합니다. SVG·HEIC는 지원하지 않습니다. 클라우드 사진은 로그인한 계정만 볼 수 있습니다.</p>
+        <button type="button" id="chooseImages" class="btn no-print">사진 또는 그림 선택</button>
+        <input type="file" id="imageFile" class="hidden" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple>
+        <p id="imageStatus" class="status" role="status" aria-live="polite"></p><div id="imageGallery" class="image-gallery"></div>
+        <p class="hint">첨부 빼기는 기록 저장 후 반영됩니다. 안전한 파일 정리를 확인할 수 없으면 저장소 파일은 보존합니다. 로컬 모드는 브라우저 저장 용량에 따라 저장이 실패할 수 있습니다.</p>
+      </section>
       <div class="row no-print" style="margin-top:22px">
         <button class="btn primary" id="saveBtn">기록 저장하기</button>
         <button class="btn danger hidden" id="deleteBtn">기록 삭제</button>
@@ -100,6 +109,7 @@
         <div class="preview-wrap">
           <div class="preview-badge">words from your day</div>
           <div id="preview" class="preview"></div>
+          <div id="previewGallery" class="image-preview-gallery" aria-label="첨부 사진 미리보기"></div>
         </div>
         <div class="counter"><span id="count">0</span>자</div>
         <div class="row no-print" style="margin-top:12px">
@@ -123,7 +133,7 @@
           <button class="btn" id="importBtn">백업 불러오기</button>
           <input id="importFile" class="hidden" type="file" accept="application/json,.json">
         </div>
-        <p class="hint">클라우드 모드는 Supabase에 저장합니다. 로컬 모드는 이 기기에만 저장합니다. JSON 백업에는 개인 일기가 포함되므로 GitHub에 업로드하지 마세요.</p><p class="hint archive-note">기존 앱의 ‘전체 기록 백업’ 파일을 가져올 수 있습니다. 로그인한 계정과 개수를 확인한 후 업로드하며, 동일한 ID는 덮어쓰지 않습니다. 기존 앱과 백업 파일은 보존해 주세요.</p>
+        <p class="hint">클라우드 모드는 Supabase에 저장합니다. 로컬 모드는 이 기기에만 저장합니다. JSON 백업에는 개인 일기와 비공개 사진이 포함됩니다 (최대 100MB). 글 복사·TXT에는 사진이 포함되지 않습니다. 백업은 GitHub에 업로드하지 마세요.</p><p class="hint archive-note">기존 앱의 ‘전체 기록 백업’ 파일을 가져올 수 있습니다. 로그인한 계정과 개수를 확인한 후 업로드하며, 동일한 ID는 덮어쓰지 않습니다. 기존 앱과 백업 파일은 보존해 주세요.</p>
       </section>
     </aside>
   </div>
@@ -133,10 +143,11 @@
 
 <script src="./assets/vendor/supabase.min.js" defer></script>
 <script src="./assets/public-config.js" defer></script>
-<script src="./assets/app.js" defer></script>
+<script src="./assets/app.js?v=3-images" defer></script>
 
 <dialog id="configDialog" aria-labelledby="configTitle"><form id="configForm"><div class="row between"><h2 id="configTitle">클라우드 연결 설정</h2><button type="button" class="btn" data-close="configDialog">닫기</button></div><p class="hint">이 앱 전용 Supabase 프로젝트의 주소와 Publishable key만 입력하세요. 비밀 키는 입력하지 마세요. 노트북과 휴대폰에서 같은 값을 입력합니다.</p><label class="field"><span>Project URL</span><input id="projectUrl" type="url" required placeholder="https://프로젝트ID.supabase.co" autocomplete="off"></label><label class="field"><span>Publishable key</span><input id="publishableKey" required placeholder="sb_publishable_…" autocomplete="off" spellcheck="false"></label><p class="hint">연결 정보만 이 브라우저에 저장됩니다. 일기는 GitHub에 저장되지 않습니다.</p><button id="configSave" class="btn primary" type="submit">연결 정보 저장</button><p id="configMessage" class="status" role="alert"></p></form></dialog>
 <dialog id="authDialog" aria-labelledby="authTitle"><form id="authForm"><div class="row between"><h2 id="authTitle">나의 성찰 계정</h2><button type="button" class="btn" data-close="authDialog">닫기</button></div><label class="field"><span>이메일</span><input id="email" type="email" autocomplete="username" required></label><label class="field"><span>비밀번호 (회원가입 시 12자 이상)</span><input id="password" type="password" autocomplete="current-password"></label><label class="field"><span>비밀번호 확인 (회원가입·재설정 시)</span><input id="passwordConfirm" type="password" autocomplete="new-password"></label><label class="remember-row"><input type="checkbox" id="remember"> 이 기기에서 로그인 유지 (개인 기기만)</label><div class="row"><button type="button" id="loginBtn" class="btn primary">로그인</button><button type="button" id="signupBtn" class="btn">새 계정 만들기</button><button type="button" id="resetPasswordBtn" class="btn">재설정 이메일 보내기</button><button type="button" id="updatePasswordBtn" class="btn hidden">새 비밀번호 저장</button></div><p id="authMessage" class="status" role="status" aria-live="polite"></p><p class="hint">계정 비밀번호는 Supabase Auth에서 처리합니다. 브라우저에 일기 캐시는 남기지 않습니다. 저장 전 내용은 페이지를 닫으면 사라질 수 있으니 TXT로 보관하세요.</p></form></dialog>
 <dialog id="conflictDialog" aria-labelledby="conflictTitle"><h2 id="conflictTitle">다른 버전이 발견됐어요</h2><p class="hint">다른 기기에서 수정하거나 삭제한 기록입니다. 자동으로 덮어쓰지 않습니다. 입력 내용을 비교한 뒤 선택하세요.</p><div class="conflict-grid"><section><h3>내 입력 내용</h3><pre id="conflictLocal"></pre></section><section><h3>클라우드의 최신 내용</h3><pre id="conflictRemote"></pre></section></div><div class="row"><button id="conflictLoad" class="btn">클라우드 버전 열기</button><button id="conflictNew" class="btn primary">내 입력을 새 기록으로 저장</button><button id="conflictCancel" class="btn">취소 · 입력 유지</button></div></dialog>
+<dialog id="imageDialog" aria-labelledby="imageDialogTitle"><div class="row between"><h2 id="imageDialogTitle">첨부 사진 보기</h2><button type="button" class="btn" data-close="imageDialog">닫기</button></div><img id="enlargedImage" alt=""><p id="enlargedCaption" class="hint"></p></dialog>
 </body>
 </html>
