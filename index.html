@@ -6,9 +6,10 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'none'; form-action 'self'">
 <title>생각을 내 것으로 · 성찰 편집실</title>
-<link rel="stylesheet" href="./assets/style.css">
-<link rel="stylesheet" href="./assets/cloud.css">
-<link rel="stylesheet" href="./assets/images.css?v=3-images">
+<link rel="stylesheet" href="./assets/style.css?v=4-drafts">
+<link rel="stylesheet" href="./assets/cloud.css?v=4-drafts">
+<link rel="stylesheet" href="./assets/images.css?v=4-drafts">
+<link rel="stylesheet" href="./assets/drafts.css?v=4-drafts">
 </head>
 <body>
 <div class="wrap">
@@ -29,7 +30,7 @@
   </div>
 
   <div class="studio-strip"><b>01 &nbsp; 기록하고 &nbsp; / &nbsp; 02 &nbsp; 돌아보고 &nbsp; / &nbsp; 03 &nbsp; 내 것으로</b><span>YOUR PRIVATE REFLECTION STUDIO</span></div>
-<section class="panel cloud-panel no-print" aria-label="계정 및 동기화"><div class="row between"><div><div class="panel-sticker">MY PRIVATE CLOUD</div><strong id="cloudStatus" role="status" aria-live="polite">로그인 전 · 클라우드 미연결</strong><p class="hint" id="lastSync">마지막 동기화: 없음</p></div><div class="row"><button id="configBtn" class="btn">클라우드 연결 설정</button><button id="authBtn" class="btn primary">로그인 / 회원가입</button><button id="syncBtn" class="btn" disabled>지금 동기화</button><button id="logoutBtn" class="btn hidden">로그아웃</button><button id="localBtn" class="btn">이 기기 로컬 모드</button></div></div><p id="cloudError" class="status" role="alert"></p><p class="hint">클라우드 기록은 로그인한 계정에만 연결됩니다. 온라인 저장 전용이며, 저장 실패 시 입력 내용을 유지합니다. 다른 기기의 변경은 ‘지금 동기화’로 확인하세요. 공용 기기에서는 로그인 유지에 체크하지 마세요.</p><div id="importReport" class="hint" role="status" aria-live="polite"></div></section>
+<section class="panel cloud-panel no-print" aria-label="계정 및 동기화"><div class="row between"><div><div class="panel-sticker">MY PRIVATE CLOUD</div><strong id="cloudStatus" role="status" aria-live="polite">로그인 전 · 클라우드 미연결</strong><p class="hint" id="lastSync">마지막 동기화: 없음</p></div><div class="row"><button id="configBtn" class="btn">클라우드 연결 설정</button><button id="authBtn" class="btn primary">로그인 / 회원가입</button><button id="syncBtn" class="btn" disabled>지금 동기화</button><button id="logoutBtn" class="btn hidden">로그아웃</button><button id="localBtn" class="btn">이 기기 로컬 모드</button></div></div><p id="cloudError" class="status" role="alert"></p><p class="hint">클라우드 기록은 로그인한 계정에만 연결됩니다. 기록 저장은 직접 누를 때만 진행하며, 저장 실패 시 입력 내용을 유지합니다. 다른 기기의 변경은 ‘지금 동기화’로 확인하세요. 공용 기기에서는 로그인 유지에 체크하지 마세요.</p><div id="importReport" class="hint" role="status" aria-live="polite"></div></section>
   <div class="layout">
     <main class="panel">
       <div class="panel-sticker">EDITOR'S NOTE</div>
@@ -38,6 +39,7 @@
         <button id="newBtn" class="btn secondary no-print">+ 새 기록</button>
       </div>
 
+      <aside class="draft-panel no-print" aria-label="기기 임시저장"><div class="draft-tools"><label><input type="checkbox" id="draftOn" checked> 이 화면 자동 임시저장</label><button type="button" class="btn" id="draftPick" disabled>임시본 목록</button></div><p id="draftStatus" class="status" role="status" aria-live="polite">임시저장 대기</p><p class="hint">이 기기·브라우저에만 보관됩니다. 다른 기기에 동기화하려면 ‘기록 저장하기’를 누르세요. 공용 기기에서는 사용 후 로그아웃해 임시본을 삭제하세요. 브라우저를 관리하는 사람은 기기 데이터를 볼 수 있습니다.</p></aside>
       <div class="editor-intro"><div>완벽하게 쓰려 하지 않아도 괜찮아요. 오늘의 생각을 먼저 붙잡고, 그 생각을 나만의 언어로 조금씩 선명하게 다듬어 보세요.</div></div>
 
       <div class="progress-box">
@@ -143,10 +145,12 @@
 
 <script src="./assets/vendor/supabase.min.js" defer></script>
 <script src="./assets/public-config.js" defer></script>
-<script src="./assets/app.js?v=3-images" defer></script>
+<script src="./assets/drafts.js?v=4-drafts" defer></script>
+<script src="./assets/app.js?v=4-drafts" defer></script>
 
-<dialog id="configDialog" aria-labelledby="configTitle"><form id="configForm"><div class="row between"><h2 id="configTitle">클라우드 연결 설정</h2><button type="button" class="btn" data-close="configDialog">닫기</button></div><p class="hint">이 앱 전용 Supabase 프로젝트의 주소와 Publishable key만 입력하세요. 비밀 키는 입력하지 마세요. 노트북과 휴대폰에서 같은 값을 입력합니다.</p><label class="field"><span>Project URL</span><input id="projectUrl" type="url" required placeholder="https://프로젝트ID.supabase.co" autocomplete="off"></label><label class="field"><span>Publishable key</span><input id="publishableKey" required placeholder="sb_publishable_…" autocomplete="off" spellcheck="false"></label><p class="hint">연결 정보만 이 브라우저에 저장됩니다. 일기는 GitHub에 저장되지 않습니다.</p><button id="configSave" class="btn primary" type="submit">연결 정보 저장</button><p id="configMessage" class="status" role="alert"></p></form></dialog>
-<dialog id="authDialog" aria-labelledby="authTitle"><form id="authForm"><div class="row between"><h2 id="authTitle">나의 성찰 계정</h2><button type="button" class="btn" data-close="authDialog">닫기</button></div><label class="field"><span>이메일</span><input id="email" type="email" autocomplete="username" required></label><label class="field"><span>비밀번호 (회원가입 시 12자 이상)</span><input id="password" type="password" autocomplete="current-password"></label><label class="field"><span>비밀번호 확인 (회원가입·재설정 시)</span><input id="passwordConfirm" type="password" autocomplete="new-password"></label><label class="remember-row"><input type="checkbox" id="remember"> 이 기기에서 로그인 유지 (개인 기기만)</label><div class="row"><button type="button" id="loginBtn" class="btn primary">로그인</button><button type="button" id="signupBtn" class="btn">새 계정 만들기</button><button type="button" id="resetPasswordBtn" class="btn">재설정 이메일 보내기</button><button type="button" id="updatePasswordBtn" class="btn hidden">새 비밀번호 저장</button></div><p id="authMessage" class="status" role="status" aria-live="polite"></p><p class="hint">계정 비밀번호는 Supabase Auth에서 처리합니다. 브라우저에 일기 캐시는 남기지 않습니다. 저장 전 내용은 페이지를 닫으면 사라질 수 있으니 TXT로 보관하세요.</p></form></dialog>
+<dialog id="draftDialog" aria-labelledby="draftListTitle"><div class="row between"><h2 id="draftListTitle">이 기기의 임시본</h2><button type="button" class="btn" data-close="draftDialog">닫기</button></div><p class="hint">열어도 클라우드 기록은 변경되지 않습니다.</p><div id="draftList"></div></dialog>
+<dialog id="configDialog" aria-labelledby="configTitle"><form id="configForm"><div class="row between"><h2 id="configTitle">클라우드 연결 설정</h2><button type="button" class="btn" data-close="configDialog">닫기</button></div><p class="hint">이 앱 전용 Supabase 프로젝트의 주소와 Publishable key만 입력하세요. 비밀 키는 입력하지 마세요. 노트북과 휴대폰에서 같은 값을 입력합니다.</p><label class="field"><span>Project URL</span><input id="projectUrl" type="url" required placeholder="https://프로젝트ID.supabase.co" autocomplete="off"></label><label class="field"><span>Publishable key</span><input id="publishableKey" required placeholder="sb_publishable_…" autocomplete="off" spellcheck="false"></label><p class="hint">연결 정보와 작성 중인 임시본은 이 브라우저에 보관될 수 있습니다. 일기는 GitHub에 저장되지 않습니다.</p><button id="configSave" class="btn primary" type="submit">연결 정보 저장</button><p id="configMessage" class="status" role="alert"></p></form></dialog>
+<dialog id="authDialog" aria-labelledby="authTitle"><form id="authForm"><div class="row between"><h2 id="authTitle">나의 성찰 계정</h2><button type="button" class="btn" data-close="authDialog">닫기</button></div><label class="field"><span>이메일</span><input id="email" type="email" autocomplete="username" required></label><label class="field"><span>비밀번호 (회원가입 시 12자 이상)</span><input id="password" type="password" autocomplete="current-password"></label><label class="field"><span>비밀번호 확인 (회원가입·재설정 시)</span><input id="passwordConfirm" type="password" autocomplete="new-password"></label><label class="remember-row"><input type="checkbox" id="remember"> 이 기기에서 로그인 유지 (개인 기기만)</label><div class="row"><button type="button" id="loginBtn" class="btn primary">로그인</button><button type="button" id="signupBtn" class="btn">새 계정 만들기</button><button type="button" id="resetPasswordBtn" class="btn">재설정 이메일 보내기</button><button type="button" id="updatePasswordBtn" class="btn hidden">새 비밀번호 저장</button></div><p id="authMessage" class="status" role="status" aria-live="polite"></p><p class="hint">계정 비밀번호는 Supabase Auth에서 처리합니다. 자동 임시저장을 켜면 작성 중인 글과 사진을 이 기기에 보관합니다. 명시적으로 로그아웃하면 현재 계정의 임시본을 삭제합니다.</p></form></dialog>
 <dialog id="conflictDialog" aria-labelledby="conflictTitle"><h2 id="conflictTitle">다른 버전이 발견됐어요</h2><p class="hint">다른 기기에서 수정하거나 삭제한 기록입니다. 자동으로 덮어쓰지 않습니다. 입력 내용을 비교한 뒤 선택하세요.</p><div class="conflict-grid"><section><h3>내 입력 내용</h3><pre id="conflictLocal"></pre></section><section><h3>클라우드의 최신 내용</h3><pre id="conflictRemote"></pre></section></div><div class="row"><button id="conflictLoad" class="btn">클라우드 버전 열기</button><button id="conflictNew" class="btn primary">내 입력을 새 기록으로 저장</button><button id="conflictCancel" class="btn">취소 · 입력 유지</button></div></dialog>
 <dialog id="imageDialog" aria-labelledby="imageDialogTitle"><div class="row between"><h2 id="imageDialogTitle">첨부 사진 보기</h2><button type="button" class="btn" data-close="imageDialog">닫기</button></div><img id="enlargedImage" alt=""><p id="enlargedCaption" class="hint"></p></dialog>
 </body>

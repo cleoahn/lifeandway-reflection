@@ -1,4 +1,4 @@
-/* LIFE & WAY V3. No cloud diary content is cached in browser storage.
+/* LIFE & WAY V4. Device-only temporary drafts are separate from manually saved records.
  * Requires pinned @supabase/supabase-js 2.119.0 global (window.supabase).
  * All DOM output containing diary/user data uses textContent or escaped HTML.
  */
@@ -109,10 +109,10 @@
     editorImages.forEach(image=>{
       const card=document.createElement('figure');card.className='image-card';const view=document.createElement('button');view.type='button';view.className='image-thumb';view.disabled=true;view.textContent='사진 불러오는 중';view.setAttribute('aria-label',image.name+' 크게 보기');
       const caption=document.createElement('input');caption.type='text';caption.maxLength=1000;caption.value=image.caption;caption.placeholder='사진 설명 (선택)';caption.setAttribute('aria-label',image.name+' 설명');caption.disabled=busy||imageWorking||!canEdit();
-      caption.oninput=()=>{if(busy||imageWorking||imageWorking||!canEdit())return;image.caption=caption.value;dirty=true;status('사진 설명 저장 전');};
+      caption.oninput=()=>{if(busy||imageWorking||!canEdit())return;image.caption=caption.value;dirty=true;collect();status('사진 설명 저장 전');};
       const label=document.createElement('figcaption');label.textContent=image.name+' · '+Math.ceil(image.size/1024)+'KB';
       const row=document.createElement('div');row.className='row';const save=document.createElement('button');save.type='button';save.className='btn';save.textContent='변환 사진 저장';save.disabled=true;
-      const remove=document.createElement('button');remove.type='button';remove.className='btn';remove.textContent='첨부 빼기';remove.disabled=busy||imageWorking||!canEdit();remove.onclick=()=>{if(busy||imageWorking||imageWorking)return;editorImages=editorImages.filter(v=>v.id!==image.id);dirty=true;status('첨부 변경 저장 전');renderImages();};row.append(save,remove);card.append(view,label,caption,row);el('imageGallery').append(card);
+      const remove=document.createElement('button');remove.type='button';remove.className='btn';remove.textContent='첨부 빼기';remove.disabled=busy||imageWorking||!canEdit();remove.onclick=()=>{if(busy||imageWorking)return;editorImages=editorImages.filter(v=>v.id!==image.id);dirty=true;collect();void flushFull();status('첨부 변경 저장 전');renderImages();};row.append(save,remove);card.append(view,label,caption,row);el('imageGallery').append(card);
       imageBlob(image,t).then(blob=>{if(!live(t)||revision!==imageRevision)return;const url=URL.createObjectURL(blob);imageURLs.add(url);const img=document.createElement('img');img.src=url;img.alt=image.caption||image.name;view.replaceChildren(img);view.disabled=false;
         const enlarge=()=>{if(!live(t)||revision!==imageRevision)return;el('enlargedImage').src=url;el('enlargedImage').alt=image.caption||image.name;el('enlargedCaption').textContent=image.caption||image.name;showDialog('imageDialog');};view.onclick=enlarge;
         save.disabled=false;save.onclick=()=>{if(!live(t)||revision!==imageRevision)return;download(image.name.replace(/\.[^.]*$/,'')+(image.mime==='image/jpeg'?'.jpg':image.mime==='image/png'?'.png':'.webp'),blob,image.mime);};
@@ -124,10 +124,10 @@
   async function chooseImages(event){
     const files=Array.from(event.target.files||[]);event.target.value='';if(!files.length||busy||imageWorking||!canEdit())return;
     if(files.length+editorImages.length>3){imageNotice('사진은 기록마다 최대 3장입니다.');return;}
-    const t=token(),revision=imageRevision;imageWorking=true;lock();imageNotice('사진을 안전한 크기로 변환하고 있습니다.');
+    const t=token(),revision=imageRevision;imageWorking=true;collect();lock();imageNotice('사진을 안전한 크기로 변환하고 있습니다.');
     try{const added=[];for(const file of files)added.push(await processImage(file));if(!live(t)||revision!==imageRevision)return;editorImages.push(...added);dirty=true;renderImages();imageNotice('원본 대신 최대 1600px, 1MiB 이하로 변환한 사진만 저장합니다.');}
     catch(err){if(live(t)&&revision===imageRevision)imageNotice(err.message+' 선택한 사진은 추가하지 않았습니다.');}
-    finally{if(live(t)){imageWorking=false;lock();renderImages();}}
+    finally{if(live(t)){imageWorking=false;if(!dirty&&draft?.pending){retireDraft();draftView();}else{collect();void flushFull();}lock();renderImages();}}
   }
   async function stageImages(images,t,store=stagedImages){
     const result=[];
@@ -139,7 +139,7 @@
       if(!stage){const blob=await imageBlob(image,t);stage={blob,source:image.dataURL,path:t.userId+'/'+crypto.randomUUID()+(image.mime==='image/jpeg'?'.jpg':image.mime==='image/png'?'.png':'.webp'),uploaded:false,attempted:false};if(!live(t))throw Error('계정이 변경되었습니다.');store.set(image.id,stage);}
       if(!stage.uploaded){
         if(stage.attempted){const check=await t.client.storage.from(IMAGE_BUCKET).download(stage.path);if(!live(t))throw Error('계정이 변경되었습니다.');if(check.data){await verifyBlob(check.data,image);const a=new Uint8Array(await stage.blob.arrayBuffer()),b=new Uint8Array(await check.data.arrayBuffer());if(a.length!==b.length||a.some((v,i)=>v!==b[i]))throw Error('재시도 사진 내용이 다릅니다. 원본 입력은 유지됩니다.');stage.uploaded=true;}else if(String(check.error?.statusCode||check.error?.status)!=='404'&&!/not found|does not exist/i.test(check.error?.message||''))throw Error('이전 사진 업로드 상태를 확인하지 못했습니다. 같은 화면에서 다시 시도해 주세요.');}
-        if(!stage.uploaded){stage.attempted=true;const reply=await t.client.storage.from(IMAGE_BUCKET).upload(stage.path,stage.blob,{contentType:image.mime,upsert:false});if(!live(t))throw Error('계정이 변경되었습니다.');if(reply.error)throw Error('사진 업로드를 확인하지 못했습니다. 경로와 변환 사진을 유지하므로 같은 화면에서 재시도해 주세요.');stage.uploaded=true;}
+        if(!stage.uploaded){stage.attempted=true;if(store===stagedImages&&draftOn()){collect();await flushFull();if(!live(t))throw Error('계정이 변경되었습니다.');}const reply=await t.client.storage.from(IMAGE_BUCKET).upload(stage.path,stage.blob,{contentType:image.mime,upsert:false});if(!live(t))throw Error('계정이 변경되었습니다.');if(reply.error)throw Error('사진 업로드를 확인하지 못했습니다. 경로와 변환 사진을 유지하므로 같은 화면에서 재시도해 주세요.');stage.uploaded=true;}
       }
       result.push(imageMeta({...image,path:stage.path},t.userId));
     }return result;
@@ -197,6 +197,70 @@
     catch(err){if(live(t))cloudError('백업 실패: '+err.message+' 사진을 누락한 파일은 만들지 않았습니다.');}finally{if(live(t)){busy=false;lock();}}
   }
 
+  // Recovery scope is installed only by verified login or explicit local entry.
+  const writer=uid(); let shelf=null, draft=null, source=null, timer=0, draftReady=false, triedRestore=false, uncertainty='', listTicket=0, viewSerial=0;
+  const dNote=s=>{el('draftStatus').textContent=s;};
+  const draftOn=()=>el('draftOn').checked;
+  function unpin(){try{shelf?.pin(writer,null);}catch(_){}}
+  function ancestors(d){return d?[...(d.ancestry||[]),{id:d.id,rev:d.rev}]:[];}
+  function draftView(){unpin();clearTimeout(timer);timer=0;draft=null;source=null;uncertainty='';viewSerial++;dNote(!canEdit()?'로그인 또는 로컬 모드에서 사용':!shelf?'임시저장 실패 · 기기 저장소를 확인하세요.':draftOn()?'임시저장 대기':'임시저장 꺼짐 (이 화면)');}
+  function activateShelf(){try{shelf=window.LWDrafts.open(localMode?'local':config.url+'|'+user.id);}catch(_){shelf=null;}draftReady=false;triedRestore=false;draftView();}
+  function hideShelf(){unpin();listTicket++;el('draftList').replaceChildren();el('draftDialog').close();shelf=null;draftReady=false;triedRestore=false;el('draftOn').checked=true;draftView();}
+  function collect(){
+    if(!shelf||!draftOn()||!canEdit()||(!dirty&&!imageWorking))return;
+    const now=Date.now();draft={id:draft?.id||uid(),created:draft?.created||now,rev:(draft?.rev||0)+1,writer,time:now,scope:shelf.scope,gen:shelf.gen,requestId,currentId,currentBase,ancestry:ancestors(source),
+      text:Object.fromEntries(ids.map(k=>[k,el(k).value])),images:editorImages.map(v=>({...v})),pending:imageWorking,uncertainty,byteSource:source?(source.journalOnly?source.byteSource:{id:source.id,rev:source.rev}):null,
+      stages:editorImages.flatMap(i=>{const s=stagedImages.get(i.id);return s?.attempted?[{id:i.id,path:s.path}]:[];})};
+    try{shelf.writeJournal(draft);draft.journalOK=true;}catch(e){draft.issue=e.message;}
+    dNote(draft.issue?'텍스트 임시저장 실패 · '+draft.issue:imageWorking?'사진 변환 중 · 새 사진은 아직 임시저장되지 않았습니다.':'임시저장 중');
+    clearTimeout(timer);timer=setTimeout(flushFull,350);
+  }
+  function flushFull(){
+    clearTimeout(timer);timer=0;const d=draft,s=shelf;if(!d||!s||!draftOn())return Promise.resolve(false);
+    if(d.job)return d.job;
+    const {journalOK,issue,full,job,...row}=d;
+    d.job=s.write(row).then(()=>{d.full=true;if(draft===d&&shelf===s)dNote(d.pending?'사진 변환 중 · 새 사진은 미보관':d.uncertainty?'사진 확인 필요 · '+d.uncertainty:issue?'텍스트 저널 실패 · 전체 임시본 보관됨: '+issue:'임시저장 완료 · '+new Date(d.time).toLocaleTimeString('ko-KR'));return true;},e=>{if(draft===d&&shelf===s)dNote('임시저장 실패 · '+(e.message||'기기 용량·권한을 확인하세요.')+(journalOK?' (텍스트 저널만 보관)':''));return false;});return d.job;
+  }
+  function boundary(){if(!draft||!shelf||!draftOn())return;try{shelf.writeJournal(draft);}catch(e){draft.journalOK=false;dNote('텍스트 임시저장 실패 · '+e.message);}void flushFull();}
+  async function keepView(){
+    if(!dirty)return true;const s=shelf,v=viewSerial,d=draft;
+    if(!draftOn())return confirm('이 화면은 임시저장이 꺼져 있습니다. 현재 입력을 보관하지 않고 이동할까요?');
+    if(!d&&source)return true;
+    if(d?.job&&!d.full){await d.job;if(!d.full)delete d.job;}
+    if(d!==draft||s!==shelf||v!==viewSerial)return false;
+    if(!await flushFull()||d!==draft||v!==viewSerial){if(v===viewSerial)dNote('임시저장 확인 전에는 이동하지 않습니다. 저장 공간을 확인하거나 직접 기록을 저장하세요.');return false;}return true;
+  }
+  function retireDraft(){
+    clearTimeout(timer);timer=0;const s=shelf,mine=draft,old=source;if(!s)return Promise.resolve();unpin();
+    return (async()=>{if(mine?.job)await mine.job;await s.retire([...ancestors(old),...ancestors(mine)]);})().catch(()=>{if(shelf===s)cloudError('기록 처리는 완료됐지만 기기 임시본 삭제를 확인하지 못했습니다. 임시본 목록을 확인하세요.');});
+  }
+  function restore(d){
+    if(!shelf||d.scope!==shelf.scope||d.gen!==shelf.gen)return;shelf.valid();
+    if(!d.requestId||!!d.currentId!==!!d.currentBase||(d.currentId&&(d.currentBase.id!==d.currentId||!Number.isInteger(d.currentBase.version)))||(!localMode&&d.currentBase?.user_id&&d.currentBase.user_id!==user.id))throw Error('원본 버전을 확인할 수 없어 임시본을 열지 않았습니다.');
+    const imgs=d.images.map(i=>{if(i.dataURL)return validateImages([i],user?.id,true)[0];return imageMeta(i,user?.id);});
+    if(imgs.length>3||new Set(imgs.map(i=>i.id)).size!==imgs.length)throw Error('임시본의 사진 목록을 확인할 수 없습니다.');
+    const restoreStages=new Map();if(!localMode)for(const entry of d.stages||[]){const i=imgs.find(x=>x.id===entry.id&&x.dataURL);if(i){const m=imageMeta({...i,path:entry.path},user.id);restoreStages.set(i.id,{blob:dataURLBlob(i.dataURL,i),source:i.dataURL,path:m.path,attempted:true,uploaded:false});}}
+    draftView();source=d;let pinWarning='';if(imgs.some(i=>i.dataURL))try{shelf.pin(writer,d.journalOnly?d.byteSource:{id:d.id,rev:d.rev});}catch(_){pinWarning=' · 탭 간 사진 복구 보호를 확인하지 못했습니다.';}currentId=d.currentId;currentBase=d.currentBase;requestId=d.requestId;
+    ids.forEach(k=>el(k).value=d.text[k]??'');resetImages(imgs);
+    for(const [id,stage] of restoreStages)stagedImages.set(id,stage);
+    dirty=true;uncertainty=[d.uncertainty,d.pending?'변환 중이던 사진은 다시 선택하세요.':''].filter(Boolean).join(' · ');
+    el('editorTitle').textContent=currentId?'기록 수정하기':'오늘의 기록';el('deleteBtn').classList.toggle('hidden',!currentId);generate();
+    dNote('임시본 복구 · '+new Date(d.time).toLocaleString('ko-KR')+(d.journalOnly?' · 최근 텍스트 저널 반영':'')+(uncertainty?' · '+uncertainty:'')+pinWarning);
+    status(currentId&&!records.some(r=>r.id===currentId&&!r.deletedAt)?'원본이 목록에 없습니다. 자동으로 새 기록을 만들지 않습니다.':'복구된 입력입니다. 기록 저장은 직접 눌러 주세요.');imageNotice(uncertainty);
+  }
+  async function afterSync(){
+    draftReady=true;if(triedRestore||!shelf)return;triedRestore=true;const s=shelf,v=viewSerial;
+    try{const {items,failure}=await s.list();if(shelf!==s||viewSerial!==v||!draftOn())return;if(!dirty&&!currentId&&!imageWorking&&items[0])restore(items[0]);if(failure)cloudError(failure);}catch(e){if(s===shelf)dNote('임시본 복구 실패 · '+e.message);}
+  }
+  async function pickDraft(){
+    if(!canEdit()||!shelf||!draftReady||busy||imageWorking)return;const s=shelf,ticket=++listTicket;const box=el('draftList');box.replaceChildren();showDialog('draftDialog');
+    try{const {items,failure}=await s.list();if(s!==shelf||ticket!==listTicket)return;box.textContent=failure||(!items.length?'보관된 임시본이 없습니다.':'');
+      for(const d of items){const row=document.createElement('div');row.className='draft-row';const name=document.createElement('span');name.textContent=(d.text.title||'제목 없는 기록').slice(0,60)+' · '+new Date(d.time).toLocaleString('ko-KR');const read=document.createElement('button'),del=document.createElement('button');for(const b of [read,del]){b.type='button';b.className='btn';}read.textContent='열기';del.textContent='폐기';
+        read.onclick=async()=>{if(s!==shelf||busy||imageWorking||!await keepView()||s!==shelf)return;try{restore(d);el('draftDialog').close();}catch(e){dNote('임시본 복구 실패 · '+e.message);}};
+        del.onclick=async()=>{if(s!==shelf||busy||imageWorking||!confirm('선택한 기기 임시본을 폐기할까요? 저장한 기록은 삭제하지 않습니다.'))return;const mine=draft;try{if(mine?.id===d.id&&mine.rev===d.rev){clearTimeout(timer);if(mine.job)await mine.job;}await s.remove(d);if(s!==shelf)return;if((draft?.id===d.id&&draft.rev===d.rev)||(!draft&&source?.id===d.id&&source.rev===d.rev))clearEditor();await pickDraft();}catch(e){if(s===shelf)box.textContent='폐기 실패 · '+e.message;}};row.append(name,read,del);box.append(row);}
+    }catch(e){if(s===shelf)box.textContent='임시본 목록 실패 · '+e.message;}
+  }
+
   function showDialog(id) { const d=el(id); if(!d.open) d.showModal(); }
   function clearConflict() {
     conflict=null;
@@ -205,7 +269,7 @@
   }
   function closeDialogs() { ['authDialog','conflictDialog','imageDialog'].forEach(id=>el(id).close()); }
   function lock() {
-    const enabled=canEdit();
+    const enabled=canEdit();el('draftPick').disabled=!enabled||!shelf||!draftReady||busy||imageWorking;el('draftOn').disabled=!enabled||busy||imageWorking;
     el('chooseImages').disabled=!enabled||busy||imageWorking||editorImages.length>=3;
     el('imageFile').disabled=!enabled||busy||imageWorking;
     document.querySelectorAll('#imageGallery input, #imageGallery .row button').forEach(n=>n.disabled=!enabled||busy||imageWorking);
@@ -222,14 +286,15 @@
     el('updatePasswordBtn').classList.toggle('hidden', !recovery);
   }
   function clearEditor() {
-    resetImages();imageNotice('');
+    draftView();resetImages();imageNotice('');
     currentId=null; currentBase=null; requestId=uid(); dirty=false;
     ids.forEach(id=>el(id).value=''); el('date').value=today();
     el('editorTitle').textContent='오늘의 기록';
     el('deleteBtn').classList.add('hidden'); status('');
     if(canEdit()) generate(); else { el('preview').textContent='로그인하거나 이 브라우저 전용 모드를 선택해 주세요.'; el('count').textContent='0'; el('progressFill').style.width='0%'; el('progressLabel').textContent='0 / 3'; }
   }
-  function scrub() {
+  function scrub(preserve=true) {
+    if(preserve)boundary();hideShelf();
     epoch++; imageWorking=false;importImageStages.clear();pendingImageCleanup.clear(); records=[]; user=null; localMode=false; localBaseline=null; clearConflict(); recovery=false; busy=false;
     clearEditor(); el('search').value=''; if(el('dateFilter'))el('dateFilter').value='';
     el('lastSync').textContent='아직 동기화하지 않음'; el('importReport').textContent='';
@@ -245,7 +310,7 @@
   function authStorageKey() { return config ? 'lw_reflection_v2_auth_'+new URL(config.url).hostname.split('.')[0] : null; }
   function clearAuthStorage() {
     const key=authStorageKey(); if(!key)return;
-    [localStorage, sessionStorage].forEach(store=> { try { store.removeItem(key); store.removeItem(key+'-code-verifier'); } catch (_) {} });
+    for(const name of ['localStorage','sessionStorage'])try{const store=globalThis[name];store.removeItem(key);store.removeItem(key+'-code-verifier');}catch(_){}
   }
   const storage = {
     getItem(key) { try { return (localStorage.getItem(REMEMBER)==='yes' ? localStorage : sessionStorage).getItem(key); } catch (_) { return null; } },
@@ -276,34 +341,42 @@
     client=window.supabase.createClient(config.url,config.key,{global:{fetch:timedFetch},auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storage:isolatedStorage,storageKey:authStorageKey()}});
     const c=client;
     const out=c.auth.onAuthStateChange((event,session)=>{
-      // Never await another Supabase auth call within this callback.
+      // Never await SDK auth calls within the SDK callback. Published events are
+      // notifications, not authoritative identities by the time their task runs.
       setTimeout(async()=>{
         if(client!==c)return;
-        if(event==='SIGNED_OUT') {scrub();return;}
-        if(session?.user && ['INITIAL_SESSION','SIGNED_IN','PASSWORD_RECOVERY','TOKEN_REFRESHED'].includes(event)) {
-          if(event==='PASSWORD_RECOVERY'){recovery=true;showDialog('authDialog');el('authMessage').textContent='새 비밀번호와 비밀번호 확인을 입력한 뒤 변경 버튼을 누르세요.';}
-          if(user?.id===session.user.id){lock();return;}
-          const keepRecovery=recovery;
-          scrub(); recovery=keepRecovery; user=session.user; localMode=false;clearEditor();lock();
-          if(recovery)showDialog('authDialog');
-          await sync();
-        }
+        if(event==='SIGNED_OUT'){await reconcileSession(c);return;}
+        const id=session?.user?.id;
+        if(!id||!['INITIAL_SESSION','SIGNED_IN','PASSWORD_RECOVERY','TOKEN_REFRESHED'].includes(event))return;
+        if(user?.id!==id)await verifiedSession(c,id);
+        if(client!==c||user?.id!==id)return;
+        if(event==='PASSWORD_RECOVERY'){recovery=true;showDialog('authDialog');el('authMessage').textContent='새 비밀번호와 비밀번호 확인을 입력한 뒤 변경 버튼을 누르세요.';}
+        lock();
       },0);
     });
     subscription=out.data.subscription;
     return c;
   }
-  async function initialSession() {
-    if(!config){lock();return;}
-    try {const c=ensureClient();const t=token(); const {data:d,error}=await c.auth.getSession();if(error)throw error;
-      if(!live(t))return;
-      if(d.session?.user) {
-        const {data:v,error:verifyError}=await c.auth.getUser();
-        if(!live(t))return;
-        if(verifyError || !v.user)throw Error('세션을 확인할 수 없습니다. 다시 로그인해 주세요.');
-        if(!user) {user=v.user;clearEditor();lock();await sync();}
-      }
-    } catch(err) {cloudError(err.message || '로그인 상태를 확인하지 못했습니다.');}
+  async function reconcileSession(c){
+    if(!c||client!==c)return;const t=token();
+    try{const {data:d,error}=await c.auth.getSession();if(!live(t))return;if(error)throw error;
+      if(d?.session?.user?.id){if(user?.id!==d.session.user.id)await verifiedSession(c,d.session.user.id);return;}
+      if(d&&d.session===null)scrub();
+    }catch(_){if(live(t))cloudError('로그인 상태를 확인하지 못했습니다. 현재 입력을 유지했습니다. 연결을 확인하세요.');}
+  }
+  const verifications=new Map();
+  async function verifiedSession(c,id){
+    if(c!==client||!id||user?.id===id)return;
+    const t=token(),key=clientGeneration+':'+epoch+':'+id;if(verifications.has(key))return verifications.get(key);
+    const task=(async()=>{try{
+      const {data:v,error}=await c.auth.getUser();if(!live(t))return;if(error||!v?.user)throw Error('계정 확인에 실패했습니다. 현재 입력은 유지됩니다.');
+      if(v.user.id!==id)return; // stale SIGNED_IN: it must not reset even an opt-out editor
+      const {data:now,error:sessionError}=await c.auth.getSession();if(!live(t))return;if(sessionError)throw sessionError;if(now?.session?.user?.id!==id)return;
+      scrub();user=v.user;activateShelf();clearEditor();lock();await sync();
+    }catch(e){if(live(t))cloudError(e.message||'계정 확인 실패 · 입력 유지');}finally{verifications.delete(key);}})();verifications.set(key,task);return task;
+  }
+  async function initialSession(){
+    if(!config){lock();return;}const t0=epoch;try{const c=ensureClient(),{data:d,error}=await c.auth.getSession();if(c!==client||t0!==epoch)return;if(error)throw error;if(d.session?.user)await verifiedSession(c,d.session.user.id);}catch(e){if(t0===epoch)cloudError(e.message||'로그인 상태 확인 실패');}
   }
   function toRecord(row) {
     return {...Object.fromEntries(ids.map(k=>[k,row[k] || ''])),id:row.id,user_id:row.user_id,
@@ -332,7 +405,7 @@
       if(currentId && !dirty) {const r=records.find(r=>r.id===currentId && !r.deletedAt); if(r)fill(r);else clearEditor();}
       el('lastSync').textContent='마지막 동기화: '+new Date().toLocaleString('ko-KR');
       cloudError('동기화 완료');
-      await cleanupImages([],[],t);
+      await afterSync();if(live(t))await cleanupImages([],[],t);
     }catch(_){if(live(t))cloudError('동기화에 실패했습니다. 기존 화면과 입력은 유지됩니다. 연결·로그인·RLS 설정을 확인해 주세요.');}
     finally{if(live(t)){busy=false;lock();}}
   }
@@ -345,16 +418,16 @@
     el('entries').querySelectorAll('.entry').forEach(node=>{const fn=()=>openRecord(node.dataset.id);node.onclick=fn;node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn();}};});
   }
   function fill(r) {
-    resetImages(r.images||[]);imageNotice('');
+    draftView();resetImages(r.images||[]);imageNotice('');
     currentId=r.id;currentBase={...r,images:(r.images||[]).map(v=>({...v}))};requestId=r.id;
     ids.forEach(k=>el(k).value=r[k]||'');dirty=false;el('editorTitle').textContent='기록 수정하기';el('deleteBtn').classList.remove('hidden');status('');generate();
   }
-  function openRecord(id) {
+  async function openRecord(id) {
     if(busy || imageWorking || !canEdit())return;
-    if(dirty&&!confirm('저장하지 않은 입력을 버리고 다른 기록을 열까요? 먼저 TXT로 보관할 수 있습니다.'))return;
+    const t=token();if(!await keepView()||!live(t)||busy||imageWorking)return;
     const r=records.find(v=>v.id===id&&!v.deletedAt);if(!r)return;fill(r);window.scrollTo({top:0,behavior:'smooth'});
   }
-  function reset() {if(busy||imageWorking||!canEdit())return;if(dirty&&!confirm('저장하지 않은 입력을 버리고 새 기록을 시작할까요?'))return;clearEditor();}
+  async function reset() {const t=token();if(busy||imageWorking||!canEdit()||!await keepView()||!live(t)||busy||imageWorking)return;clearEditor();}
   function persistLocal(next) {
     // Never read, write, delete or automatically migrate lifeandway_reflection_v1.
     if(next.length>MAX_ROWS)throw Error('로컬 기록은 최대 5,000개입니다. 백업한 뒤 기록을 정리하거나 클라우드를 사용해 주세요.');
@@ -364,10 +437,11 @@
     localStorage.setItem(LOCAL,nextRaw);
     localBaseline=nextRaw;
   }
-  function localSave() {
+  function checkLocalBase(){const match=records.find(r=>r.id===(currentId||requestId));if(currentBase?(!match||match.updatedAt!==currentBase.updatedAt||match.version!==currentBase.version):!!match)throw Error('원본 로컬 기록이 변경 또는 삭제되어 덮어쓰지 않았습니다. 임시본과 입력은 유지됩니다.');}
+  function localSave() {checkLocalBase();
     const d=data(); const now=new Date().toISOString();
     const r={...d,id:currentId || requestId,createdAt:currentBase?.createdAt||now,updatedAt:now,version:(currentBase?.version||0)+1};
-    const next=records.filter(v=>v.id!==r.id).concat(r);persistLocal(next);records=next;fill(r);render();status('이 브라우저에만 저장되었습니다. 클라우드 동기화되지 않습니다.');
+    const next=records.filter(v=>v.id!==r.id).concat(r);persistLocal(next);records=next;const cleanup=retireDraft();fill(r);render();status('이 브라우저에만 저장되었습니다. 클라우드 동기화되지 않습니다.');return cleanup;
   }
   function compareConflict(mine,remote,operation) {
     conflict={mine:{...mine},remote:remote?{...remote}:null,operation,owner:user?.id,epoch};
@@ -402,7 +476,7 @@
       }
       if(!reply.data?.length) {const remote=await findRemote(t,mine.id);if(live(t))compareConflict(mine,remote,deleting?'delete':'save');return;}
       const saved=toRecord(reply.data[0]);records=records.filter(r=>r.id!==saved.id).concat(saved);
-      if(deleting)clearEditor();else fill(saved);
+      await retireDraft();if(!live(t))return;if(deleting)clearEditor();else fill(saved);
       render();status(deleting?'클라우드에서 삭제되었습니다.':'클라우드 저장 완료');
       el('lastSync').textContent='마지막 동기화: '+new Date().toLocaleString('ko-KR');
       await cleanupImages(base?.images,deleting?[]:saved.images,t);
@@ -411,15 +485,16 @@
   }
   async function save() {
     if(busy||imageWorking||!canEdit())return;
+    if(uncertainty&&!confirm('복구되지 않은 사진이 있을 수 있습니다: '+uncertainty+' 현재 보이는 첨부만 기록에 저장할까요?'))return;
     const d=data();if(![d.insight,d.experience,d.action].some(Boolean)){status('성찰 질문 중 하나 이상 작성해 주세요.');return;}
     if(!validDate(d.date) || (d.deadline&&!validDate(d.deadline))){status('유효한 기록 날짜와 실행 기한을 입력해 주세요.');return;}
     if(ids.some(k=>d[k].length>200000)){status('한 입력칸은 200,000자 이내로 작성해 주세요.');return;}
-    if(localMode){try{localSave();}catch(err){status((err.message||'브라우저 저장 실패')+' · 입력 유지. TXT로 보관해 주세요.');}return;}
+    if(localMode){try{await localSave();}catch(err){status((err.message||'브라우저 저장 실패')+' · 입력 유지. TXT로 보관해 주세요.');}return;}
     await cloudWrite(false);
   }
   async function remove() {
     if(busy||imageWorking||!currentId||!canEdit()||!confirm('이 기록을 삭제할까요? 삭제 전 JSON 백업을 권장합니다.'))return;
-    if(localMode){try{const next=records.filter(r=>r.id!==currentId);persistLocal(next);records=next;clearEditor();render();status('로컬 기록을 삭제했습니다.');}catch(err){status((err.message||'삭제 저장 실패')+' 기존 화면과 입력은 유지됩니다.');}return;}
+    if(localMode){try{const next=records.filter(r=>r.id!==currentId);checkLocalBase();persistLocal(next);records=next;const cleanup=retireDraft();clearEditor();render();status('로컬 기록을 삭제했습니다.');await cleanup;}catch(err){status((err.message||'삭제 저장 실패')+' 기존 화면과 입력은 유지됩니다.');}return;}
     await cloudWrite(true);
   }
   function download(name,text,mime) {
@@ -481,16 +556,20 @@
     finally {if(live(t)){busy=false;lock();}}
   }
   async function logout() {
-    if(dirty&&!confirm('로그아웃하면 저장하지 않은 입력은 이 화면에서 지워집니다. 먼저 TXT로 보관하시겠어요? 취소하면 계속 편집할 수 있습니다.'))return;
-    try{localStorage.setItem('lw_reflection_v2_logout',String(Date.now())+'-'+uid());}catch(_){}
-    const c=client;detach();clearAuthStorage();scrub();cloudError('로그아웃되었습니다. 이 화면의 클라우드 기록과 입력을 지웠습니다.');
+    if(!canEdit()||!confirm('로그아웃하면 이 기기·브라우저에서 현재 계정(로컬 모드는 로컬 영역)의 모든 임시본과 미저장 입력을 삭제합니다. 저장한 기록은 유지합니다. 로그아웃할까요?'))return;
+    const c=client,s=shelf;const target=s?.scope??(localMode?'local':config.url+'|'+user.id);
+    // Set the owner fence before scrubbing or broadcasting sign-out. Do not flush.
+    let purged;try{purged=(s?s.purge():window.LWDrafts.purge(target)).then(()=>true,()=>false);}catch(_){purged=Promise.resolve(false);}
+    try{localStorage.setItem('lw_reflection_v2_logout',JSON.stringify({target,nonce:uid()}));}catch(_){}
+    detach();clearAuthStorage();scrub(false);cloudError('로그아웃했습니다. 기기 임시본을 정리하고 있습니다.');
+    const done=await purged;if(!canEdit())cloudError(done?'로그아웃했습니다. 이 계정의 기기 임시본을 삭제했습니다.':'로그아웃했습니다. 임시본 삭제를 확인하지 못했습니다. 공용 기기에서는 브라우저의 이 사이트 데이터도 삭제하세요.');
     // Removing the persisted token and detaching events happens BEFORE any network I/O.
     if(c){try{const {error}=await c.auth.signOut({scope:'local'});if(error&&!user&&!localMode)cloudError('이 브라우저에서 로그아웃했습니다. 서버 연결 오류로 세션 만료 확인은 못 했습니다. 공용 기기에서는 브라우저 데이터도 삭제해 주세요.');}catch(_){}}
   }
   async function authAction(kind) {
     if(busy||imageWorking)return;
     let authToken=null;
-    if(dirty&&!confirm('로그인 과정에서 편집 중 입력이 지워질 수 있습니다. 먼저 저장 또는 TXT 보관 후 진행하세요. 계속할까요?'))return;
+    const viewToken=token();if(!await keepView()||!live(viewToken))return;
     const email=clean(el('email').value),password=el('password').value, confirmation=el('passwordConfirm').value;
     if(!email && kind!=='update'){el('authMessage').textContent='이메일을 입력해 주세요.';return;}
     if(['signup','update'].includes(kind) && (password.length<12 || password!==confirmation)){el('authMessage').textContent='12자 이상 비밀번호와 동일한 비밀번호 확인을 입력해 주세요.';return;}
@@ -515,15 +594,14 @@
       el('authMessage').textContent=kind==='signup'?'인증 이메일을 확인해 주세요. 이메일이 도착하지 않으면 스팸함과 발송 제한을 확인하세요.':kind==='reset'?'계정이 존재하면 비밀번호 재설정 메일이 전송됩니다.':kind==='update'?'비밀번호를 변경했습니다.':'로그인되었습니다.';
       if(kind==='update'){recovery=false;el('authDialog').close();}
       // Auth state subscription performs scoped scrubbing and fetching.
-      if(kind==='login' && result.data?.user) { const keep=recovery; scrub();user=result.data.user;recovery=keep;clearEditor();lock();await sync(); }
-      if(kind==='signup'&&result.data?.session?.user){scrub();user=result.data.session.user;clearEditor();lock();await sync();}
+      if((kind==='login'||kind==='signup')&&result.data?.session?.user)await verifiedSession(c,result.data.session.user.id);
     } catch(err) {if(!authToken||live(authToken))el('authMessage').textContent=err.message || '인증에 실패했습니다.';}
     finally{if(!authToken||live(authToken)){busy=false;lock();}}
   }
-  function enterLocal() {
+  async function enterLocal() {
     if(busy||imageWorking)return;
     if(!confirm('이 모드는 클라우드 계정과 별개이며, 이 브라우저를 사용하는 사람은 로컬 기록을 다시 열 수 있습니다. 공용 기기에서는 사용하지 마세요. V3 저장소가 아직 없으면 V2 로컬 기록을 읽어오며, 처음 저장할 때 V3 전용 저장소에 복사합니다. V2 원본은 수정하거나 삭제하지 않습니다. 이후 구버전 앱의 로컬 수정은 자동 동기화되지 않습니다. V1 기록은 읽거나 업로드하지 않습니다. 계속할까요?'))return;
-    if(dirty&&!confirm('현재 저장하지 않은 입력을 버릴까요?'))return;
+    const t=token();if(!await keepView()||!live(t))return;
     const previous=client;detach();clearAuthStorage();scrub();localMode=true;
     let loadedLegacy=false;
     try {
@@ -534,17 +612,18 @@
       if(check.invalid||check.duplicates||check.valid.length!==check.total)throw Error('손상 또는 중복된 로컬 기록');
       // Baseline always describes the new key, never the read-only V2 source.
       localBaseline=storedRaw;loadedLegacy=storedRaw===null&&legacyRaw!==null;
-      records=check.valid.map(r=>({...r,version:1}));
+      const versions=new Map((Array.isArray(raw)?raw:raw.records).map(r=>[r.id,Number.isInteger(r.version)?r.version:1]));records=check.valid.map(r=>({...r,version:versions.get(r.id)}));
     }
     catch(_){cloudError('로컬 기록을 읽지 못했습니다. 기존 저장 데이터는 삭제하지 않았습니다. 백업이 필요하면 기존 파일을 보관해 주세요.');localMode=false;records=[];}
-    clearEditor();render();lock();
+    if(localMode)activateShelf();clearEditor();render();lock();
     if(localMode)cloudError(loadedLegacy?'V2 로컬 기록을 읽었습니다. 아직 V3 저장소에 쓰지 않았습니다. 처음 저장하면 불러온 기록 전체를 V3 전용 저장소에 복사합니다. V2 원본은 보존되며 이후 구버전 앱의 로컬 수정은 자동 동기화되지 않습니다.':'V3 전용 로컬 저장소를 사용합니다. V2 원본은 보존되며 구버전 앱의 로컬 수정은 자동 동기화되지 않습니다.');
+    if(localMode){await afterSync();lock();}
     if(previous)previous.auth.signOut({scope:'local'}).catch(()=>{});
   }
   function bind() {
     el('chooseImages').onclick=()=>{if(canEdit()&&!busy&&!imageWorking)el('imageFile').click();};
     el('imageFile').onchange=chooseImages;
-    ids.forEach(id=>el(id).addEventListener('input',()=>{if(!canEdit())return;dirty=true;status('저장 전');generate();}));
+    ids.forEach(id=>el(id).addEventListener('input',()=>{if(!canEdit())return;dirty=true;collect();status('저장 전');generate();}));
     document.querySelectorAll('[data-mode]').forEach(btn=>{btn.setAttribute('role','tab');btn.setAttribute('aria-selected',String(btn.classList.contains('active')));btn.onclick=()=>{mode=btn.dataset.mode;document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b===btn);b.setAttribute('aria-selected',String(b===btn));});if(canEdit())generate();};});
     document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>{const dialog=button.closest('dialog');if(dialog){dialog.close();if(dialog.id==='conflictDialog')clearConflict();}});
     el('conflictDialog').addEventListener('cancel',clearConflict);
@@ -554,7 +633,7 @@
     el('syncBtn').onclick=sync;el('logoutBtn').onclick=logout;el('localBtn').onclick=enterLocal;
     el('authBtn').onclick=()=>{if(!config){showDialog('configDialog');return;}showDialog('authDialog');};
     el('configBtn').onclick=()=>{el('projectUrl').value=config?.url||'';el('publishableKey').value=config?.key||'';showDialog('configDialog');};
-    el('configForm').onsubmit=e=>{e.preventDefault();if(busy||imageWorking)return;try{const next=validateConfig(el('projectUrl').value,el('publishableKey').value);if(dirty&&!confirm('연결 변경 시 저장하지 않은 입력이 지워집니다. 계속할까요?'))return;const old=client;detach();clearAuthStorage();scrub();config=next;localStorage.setItem(CONFIG,JSON.stringify(config));el('configDialog').close();if(old)old.auth.signOut({scope:'local'}).catch(()=>{});cloudError('연결 설정을 저장했습니다. 로그인 후 전용 테이블과 RLS 연결을 확인하세요.');initialSession();}catch(err){el('configMessage').textContent=err.message||'설정을 저장하지 못했습니다.';}};
+    el('configForm').onsubmit=async e=>{e.preventDefault();if(busy||imageWorking)return;try{const next=validateConfig(el('projectUrl').value,el('publishableKey').value);const t=token();if(!await keepView()||!live(t))return;const old=client;detach();clearAuthStorage();scrub();config=next;localStorage.setItem(CONFIG,JSON.stringify(config));el('configDialog').close();if(old)old.auth.signOut({scope:'local'}).catch(()=>{});cloudError('연결 설정을 저장했습니다. 로그인 후 전용 테이블과 RLS 연결을 확인하세요.');initialSession();}catch(err){el('configMessage').textContent=err.message||'설정을 저장하지 못했습니다.';}};
     el('authForm').onsubmit=e=>{e.preventDefault();authAction('login');};
     el('loginBtn').onclick=()=>authAction('login');el('signupBtn').onclick=()=>authAction('signup');el('resetPasswordBtn').onclick=()=>authAction('reset');el('updatePasswordBtn').onclick=()=>authAction('update');
     el('copyBtn').onclick=async()=>{if(!canEdit())return;const text=generate();try{await navigator.clipboard.writeText(text);status('글을 복사했습니다. 사진은 포함되지 않습니다.');}catch(_){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();status(ok?'글을 복사했습니다.':'복사가 제한되어 있습니다. 미리보기를 선택해 복사해 주세요.');}};
@@ -562,7 +641,7 @@
     el('exportBtn').onclick=exportBackup;
     el('importBtn').onclick=()=>{if(!busy&&canEdit())el('importFile').click();};el('importFile').onchange=importBackup;
     el('conflictCancel').onclick=()=>{el('conflictDialog').close();clearConflict();status('충돌 취소 · 입력은 유지됩니다.');};
-    el('conflictLoad').onclick=()=>{if(!conflict||conflict.epoch!==epoch||conflict.owner!==user?.id)return;const r=conflict.remote;if(dirty&&!confirm('현재 입력을 버리고 서버 버전을 열까요? 먼저 TXT로 보관할 수 있습니다.'))return;el('conflictDialog').close();if(r&&!r.deletedAt){records=records.filter(v=>v.id!==r.id).concat(r);fill(r);}else{if(r)records=records.filter(v=>v.id!==r.id).concat(r);clearEditor();}clearConflict();render();};
+    el('conflictLoad').onclick=async()=>{if(!conflict||conflict.epoch!==epoch||conflict.owner!==user?.id)return;const before=conflict,r=conflict.remote;if(!await keepView()||before!==conflict)return;el('conflictDialog').close();if(r&&!r.deletedAt){records=records.filter(v=>v.id!==r.id).concat(r);fill(r);}else{if(r)records=records.filter(v=>v.id!==r.id).concat(r);clearEditor();}clearConflict();render();};
     el('conflictNew').onclick=async()=>{
       if(!conflict||busy||imageWorking||conflict.epoch!==epoch||conflict.owner!==user?.id)return;
       if(!confirm('기존 서버 기록은 변경하지 않고 사진을 새로 복사해 별도 기록으로 저장할까요?'))return;
@@ -571,13 +650,17 @@
         el('conflictDialog').close();currentId=null;currentBase=null;requestId=uid();resetImages(copied);ids.forEach(k=>el(k).value=mine[k]||'');dirty=true;clearConflict();ready=true;
       }catch(err){if(live(t)){copied=null;cloudError('새 기록의 사진 복사 실패: '+err.message+' 현재 입력은 유지됩니다. 사진이 이미 정리됐다면 해당 첨부를 빼고 파일을 다시 선택한 뒤 저장하세요.');}}
       finally{if(live(t)){imageWorking=false;lock();}}
-      if(ready&&live(t)&&!conflict)await save();
+      if(ready&&live(t)&&!conflict){collect();void flushFull();await save();}
     };
-    window.addEventListener('beforeunload',e=>{if(dirty||busy||imageWorking){e.preventDefault();e.returnValue='';}});
+    el('draftPick').onclick=pickDraft;
+    el('draftOn').onchange=()=>{if(!draftOn()&&(dirty||imageWorking)){el('draftOn').checked=true;dNote('편집 중에는 임시저장을 끌 수 없습니다. 기록을 저장하거나 임시본을 폐기한 뒤 변경하세요.');return;}if(draftOn()&&dirty)collect();else dNote(draftOn()?'임시저장 대기':'임시저장 꺼짐 (이 화면)');};
+    window.addEventListener('pagehide',e=>{boundary();if(!e?.persisted)unpin();});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')boundary();});
+    window.addEventListener('beforeunload',e=>{if((dirty&&(!draftOn()||!(draft?draft.full&&draft.journalOK&&!draft.pending&&!draft.uncertainty:source&&!uncertainty)))||busy||imageWorking){e.preventDefault();e.returnValue='';}});
     window.addEventListener('offline',()=>cloudError('오프라인입니다. 입력은 유지되지만 클라우드 저장되지 않습니다. 화면을 닫기 전 TXT로 보관하세요.'));
     window.addEventListener('online',()=>{if(user)cloudError('인터넷이 다시 연결되었습니다. 지금 동기화를 누르세요. 미저장 입력은 자동 업로드되지 않습니다.');});
     // If another tab signs out, remove all private in-memory content here too.
-    window.addEventListener('storage',e=>{if(e.key===LOCAL && localMode){cloudError('다른 탭에서 로컬 기록이 변경되었습니다. 이 화면을 덮어쓰지 않았습니다. 미저장 입력을 TXT로 보관한 뒤 로컬 모드를 다시 열어 주세요.');return;}if(((e.key===authStorageKey() && !e.newValue)||e.key==='lw_reflection_v2_logout') && user){detach();scrub();cloudError('다른 탭에서 로그아웃되어 화면을 잠갔습니다.');}});
+    window.addEventListener('storage',e=>{if(e.key===LOCAL && localMode){cloudError('다른 탭에서 로컬 기록이 변경되었습니다. 이 화면을 덮어쓰지 않았습니다. 미저장 입력을 TXT로 보관한 뒤 로컬 모드를 다시 열어 주세요.');return;}if(shelf&&e.key===shelf.marker&&e.newValue!==shelf.lease){detach();scrub(false);cloudError('다른 탭의 명시적 로그아웃으로 잠갔습니다.');return;}let explicit=false;if(e.key==='lw_reflection_v2_logout'){try{explicit=JSON.parse(e.newValue)?.target===shelf?.scope;}catch(_){explicit=!!user;}}if(explicit){detach();scrub(false);cloudError('다른 탭에서 로그아웃되어 화면을 잠갔습니다.');}else if(e.key===authStorageKey()&&!e.newValue&&user)void reconcileSession(client);});
     window.addEventListener('pageshow',e=>{if(e.persisted && user){detach();scrub();initialSession();}});
   }
   function generate(){const filled=['insight','experience','action'].filter(k=>clean(el(k).value)).length;el('progressFill').style.width=(filled/3*100)+'%';el('progressLabel').textContent=filled+' / 3';const d=data(),t=d.title||'오늘의 성찰',i=d.insight,x=d.experience,a=d.action,s=d.trigger,deadline=d.deadline?` (실행 기한: ${fmtDate(d.deadline)})`:'';let out='';if(mode==='threads'){out=[t,s?`오늘 ${s}에서 생각이 시작됐다.`:'',i,x?`내 경험을 돌아보면, ${x}`:'',a?`그래서 나는 ${a}${deadline}`:'','내가 오늘의 생각을 기록하는 이유는, 배운 것을 내 것으로 만들기 위해서다.'].filter(Boolean).join('\n\n')}else if(mode==='linkedin'){out=[t,s?`최근 ${s}을(를) 계기로 일하는 방식을 다시 생각했습니다.`:'',i?`제가 깨달은 점은 이렇습니다.\n${i}`:'',x?`실제 경험에서도 비슷한 장면이 있었습니다.\n${x}`:'',a?`앞으로의 실행 계획은 명확합니다.\n${a}${deadline}`:'','여러분은 비슷한 경험이 있으신가요?'].filter(Boolean).join('\n\n')}else{out=[`# ${t}`,`기록일: ${fmtDate(d.date)}`,s?`## 생각의 시작\n${s}`:'',i?`## 오늘의 깨달음\n${i}`:'',x?`## 내 경험에서 발견한 장면\n${x}`:'',a?`## 앞으로의 실천\n${a}${deadline}`:'',`## 오늘의 마무리\n배운 내용을 내 언어와 행동으로 바꾸는 연습을 이어가려 한다.`].filter(Boolean).join('\n\n')}if(d.tags){out+='\n\n'+d.tags.split(',').map(v=>v.trim().replace(/^#/, '').replace(/\s+/g,'')).filter(Boolean).map(v=>'#'+v).join(' ')}el('preview').textContent=out;el('count').textContent=out.length;return out}
