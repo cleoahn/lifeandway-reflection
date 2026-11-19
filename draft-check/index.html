@@ -6,10 +6,10 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'none'; form-action 'self'">
 <title>자동 임시저장 검증용 · 성찰 편집실</title>
-<link rel="stylesheet" href="https://cleoahn.github.io/lifeandway-reflection/assets/style.css?v=4-drafts">
-<link rel="stylesheet" href="https://cleoahn.github.io/lifeandway-reflection/assets/cloud.css?v=4-drafts">
-<link rel="stylesheet" href="https://cleoahn.github.io/lifeandway-reflection/assets/images.css?v=4-drafts">
-<link rel="stylesheet" href="./drafts.css?v=4-drafts">
+<link rel="stylesheet" href="https://cleoahn.github.io/lifeandway-reflection/assets/style.css?v=4-drafts-r2">
+<link rel="stylesheet" href="https://cleoahn.github.io/lifeandway-reflection/assets/cloud.css?v=4-drafts-r2">
+<link rel="stylesheet" href="https://cleoahn.github.io/lifeandway-reflection/assets/images.css?v=4-drafts-r2">
+<link rel="stylesheet" href="./drafts.css?v=4-drafts-r2">
 </head>
 <body>
 <div class="wrap">
@@ -145,8 +145,8 @@
 
 <script src="https://cleoahn.github.io/lifeandway-reflection/assets/vendor/supabase.min.js" defer></script>
 <script src="https://cleoahn.github.io/lifeandway-reflection/assets/public-config.js" defer></script>
-<script src="./drafts.js?v=4-drafts" defer></script>
-<script src="./test-flags.js"></script><script src="./app.js?v=4-drafts" defer></script>
+<script src="./drafts.js?v=4-drafts-r2" defer></script>
+<script src="./test-flags.js"></script><script src="./app.js?v=4-drafts-r2" defer></script>
 
 <dialog id="draftDialog" aria-labelledby="draftListTitle"><div class="row between"><h2 id="draftListTitle">이 기기의 임시본</h2><button type="button" class="btn" data-close="draftDialog">닫기</button></div><p class="hint">열어도 클라우드 기록은 변경되지 않습니다.</p><div id="draftList"></div></dialog>
 <dialog id="configDialog" aria-labelledby="configTitle"><form id="configForm"><div class="row between"><h2 id="configTitle">클라우드 연결 설정</h2><button type="button" class="btn" data-close="configDialog">닫기</button></div><p class="hint">이 앱 전용 Supabase 프로젝트의 주소와 Publishable key만 입력하세요. 비밀 키는 입력하지 마세요. 노트북과 휴대폰에서 같은 값을 입력합니다.</p><label class="field"><span>Project URL</span><input id="projectUrl" type="url" required placeholder="https://프로젝트ID.supabase.co" autocomplete="off"></label><label class="field"><span>Publishable key</span><input id="publishableKey" required placeholder="sb_publishable_…" autocomplete="off" spellcheck="false"></label><p class="hint">연결 정보와 작성 중인 임시본은 이 브라우저에 보관될 수 있습니다. 일기는 GitHub에 저장되지 않습니다.</p><button id="configSave" class="btn primary" type="submit">연결 정보 저장</button><p id="configMessage" class="status" role="alert"></p></form></dialog>

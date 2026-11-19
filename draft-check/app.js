@@ -201,12 +201,14 @@
   const writer=uid(); let shelf=null, draft=null, source=null, timer=0, draftReady=false, triedRestore=false, uncertainty='', listTicket=0, viewSerial=0;
   const dNote=s=>{el('draftStatus').textContent=s;};
   const draftOn=()=>el('draftOn').checked;
-  function draftView(){clearTimeout(timer);timer=0;draft=null;source=null;uncertainty='';viewSerial++;dNote(!canEdit()?'로그인 또는 로컬 모드에서 사용':!shelf?'임시저장 실패 · 기기 저장소를 확인하세요.':draftOn()?'임시저장 대기':'임시저장 꺼짐 (이 화면)');}
+  function unpin(){try{shelf?.pin(writer,null);}catch(_){}}
+  function ancestors(d){return d?[...(d.ancestry||[]),{id:d.id,rev:d.rev}]:[];}
+  function draftView(){unpin();clearTimeout(timer);timer=0;draft=null;source=null;uncertainty='';viewSerial++;dNote(!canEdit()?'로그인 또는 로컬 모드에서 사용':!shelf?'임시저장 실패 · 기기 저장소를 확인하세요.':draftOn()?'임시저장 대기':'임시저장 꺼짐 (이 화면)');}
   function activateShelf(){try{shelf=window.LWDrafts.open(localMode?'local':config.url+'|'+user.id);}catch(_){shelf=null;}draftReady=false;triedRestore=false;draftView();}
-  function hideShelf(){listTicket++;el('draftList').replaceChildren();el('draftDialog').close();shelf=null;draftReady=false;triedRestore=false;el('draftOn').checked=true;draftView();}
+  function hideShelf(){unpin();listTicket++;el('draftList').replaceChildren();el('draftDialog').close();shelf=null;draftReady=false;triedRestore=false;el('draftOn').checked=true;draftView();}
   function collect(){
     if(!shelf||!draftOn()||!canEdit()||(!dirty&&!imageWorking))return;
-    const now=Date.now();draft={id:draft?.id||uid(),created:draft?.created||now,rev:(draft?.rev||0)+1,writer,time:now,scope:shelf.scope,gen:shelf.gen,requestId,currentId,currentBase,
+    const now=Date.now();draft={id:draft?.id||uid(),created:draft?.created||now,rev:(draft?.rev||0)+1,writer,time:now,scope:shelf.scope,gen:shelf.gen,requestId,currentId,currentBase,ancestry:ancestors(source),
       text:Object.fromEntries(ids.map(k=>[k,el(k).value])),images:editorImages.map(v=>({...v})),pending:imageWorking,uncertainty,byteSource:source?(source.journalOnly?source.byteSource:{id:source.id,rev:source.rev}):null,
       stages:editorImages.flatMap(i=>{const s=stagedImages.get(i.id);return s?.attempted?[{id:i.id,path:s.path}]:[];})};
     try{shelf.writeJournal(draft);draft.journalOK=true;}catch(e){draft.issue=e.message;}
@@ -229,8 +231,8 @@
     if(!await flushFull()||d!==draft||v!==viewSerial){if(v===viewSerial)dNote('임시저장 확인 전에는 이동하지 않습니다. 저장 공간을 확인하거나 직접 기록을 저장하세요.');return false;}return true;
   }
   function retireDraft(){
-    clearTimeout(timer);timer=0;const s=shelf, mine=draft, old=source;if(!s)return;
-    void (async()=>{if(mine?.job)await mine.job;for(const d of [mine,old])if(d)await s.remove(d);})().catch(()=>{if(shelf===s)cloudError('기록 처리는 완료됐지만 기기 임시본 삭제를 확인하지 못했습니다. 임시본 목록을 확인하세요.');});
+    clearTimeout(timer);timer=0;const s=shelf,mine=draft,old=source;if(!s)return Promise.resolve();unpin();
+    return (async()=>{if(mine?.job)await mine.job;await s.retire([...ancestors(old),...ancestors(mine)]);})().catch(()=>{if(shelf===s)cloudError('기록 처리는 완료됐지만 기기 임시본 삭제를 확인하지 못했습니다. 임시본 목록을 확인하세요.');});
   }
   function restore(d){
     if(!shelf||d.scope!==shelf.scope||d.gen!==shelf.gen)return;shelf.valid();
@@ -238,12 +240,12 @@
     const imgs=d.images.map(i=>{if(i.dataURL)return validateImages([i],user?.id,true)[0];return imageMeta(i,user?.id);});
     if(imgs.length>3||new Set(imgs.map(i=>i.id)).size!==imgs.length)throw Error('임시본의 사진 목록을 확인할 수 없습니다.');
     const restoreStages=new Map();if(!localMode)for(const entry of d.stages||[]){const i=imgs.find(x=>x.id===entry.id&&x.dataURL);if(i){const m=imageMeta({...i,path:entry.path},user.id);restoreStages.set(i.id,{blob:dataURLBlob(i.dataURL,i),source:i.dataURL,path:m.path,attempted:true,uploaded:false});}}
-    draftView();source=d;currentId=d.currentId;currentBase=d.currentBase;requestId=d.requestId;
+    draftView();source=d;let pinWarning='';if(imgs.some(i=>i.dataURL))try{shelf.pin(writer,d.journalOnly?d.byteSource:{id:d.id,rev:d.rev});}catch(_){pinWarning=' · 탭 간 사진 복구 보호를 확인하지 못했습니다.';}currentId=d.currentId;currentBase=d.currentBase;requestId=d.requestId;
     ids.forEach(k=>el(k).value=d.text[k]??'');resetImages(imgs);
     for(const [id,stage] of restoreStages)stagedImages.set(id,stage);
     dirty=true;uncertainty=[d.uncertainty,d.pending?'변환 중이던 사진은 다시 선택하세요.':''].filter(Boolean).join(' · ');
     el('editorTitle').textContent=currentId?'기록 수정하기':'오늘의 기록';el('deleteBtn').classList.toggle('hidden',!currentId);generate();
-    dNote('임시본 복구 · '+new Date(d.time).toLocaleString('ko-KR')+(d.journalOnly?' · 최근 텍스트 저널 반영':'')+(uncertainty?' · '+uncertainty:''));
+    dNote('임시본 복구 · '+new Date(d.time).toLocaleString('ko-KR')+(d.journalOnly?' · 최근 텍스트 저널 반영':'')+(uncertainty?' · '+uncertainty:'')+pinWarning);
     status(currentId&&!records.some(r=>r.id===currentId&&!r.deletedAt)?'원본이 목록에 없습니다. 자동으로 새 기록을 만들지 않습니다.':'복구된 입력입니다. 기록 저장은 직접 눌러 주세요.');imageNotice(uncertainty);
   }
   async function afterSync(){
@@ -439,7 +441,7 @@
   function localSave() {checkLocalBase();
     const d=data(); const now=new Date().toISOString();
     const r={...d,id:currentId || requestId,createdAt:currentBase?.createdAt||now,updatedAt:now,version:(currentBase?.version||0)+1};
-    const next=records.filter(v=>v.id!==r.id).concat(r);persistLocal(next);records=next;retireDraft();fill(r);render();status('이 브라우저에만 저장되었습니다. 클라우드 동기화되지 않습니다.');
+    const next=records.filter(v=>v.id!==r.id).concat(r);persistLocal(next);records=next;const cleanup=retireDraft();fill(r);render();status('이 브라우저에만 저장되었습니다. 클라우드 동기화되지 않습니다.');return cleanup;
   }
   function compareConflict(mine,remote,operation) {
     conflict={mine:{...mine},remote:remote?{...remote}:null,operation,owner:user?.id,epoch};
@@ -474,7 +476,7 @@
       }
       if(!reply.data?.length) {const remote=await findRemote(t,mine.id);if(live(t))compareConflict(mine,remote,deleting?'delete':'save');return;}
       const saved=toRecord(reply.data[0]);records=records.filter(r=>r.id!==saved.id).concat(saved);
-      retireDraft();if(deleting)clearEditor();else fill(saved);
+      await retireDraft();if(!live(t))return;if(deleting)clearEditor();else fill(saved);
       render();status(deleting?'클라우드에서 삭제되었습니다.':'클라우드 저장 완료');
       el('lastSync').textContent='마지막 동기화: '+new Date().toLocaleString('ko-KR');
       await cleanupImages(base?.images,deleting?[]:saved.images,t);
@@ -487,12 +489,12 @@
     const d=data();if(![d.insight,d.experience,d.action].some(Boolean)){status('성찰 질문 중 하나 이상 작성해 주세요.');return;}
     if(!validDate(d.date) || (d.deadline&&!validDate(d.deadline))){status('유효한 기록 날짜와 실행 기한을 입력해 주세요.');return;}
     if(ids.some(k=>d[k].length>200000)){status('한 입력칸은 200,000자 이내로 작성해 주세요.');return;}
-    if(localMode){try{localSave();}catch(err){status((err.message||'브라우저 저장 실패')+' · 입력 유지. TXT로 보관해 주세요.');}return;}
+    if(localMode){try{await localSave();}catch(err){status((err.message||'브라우저 저장 실패')+' · 입력 유지. TXT로 보관해 주세요.');}return;}
     await cloudWrite(false);
   }
   async function remove() {
     if(busy||imageWorking||!currentId||!canEdit()||!confirm('이 기록을 삭제할까요? 삭제 전 JSON 백업을 권장합니다.'))return;
-    if(localMode){try{const next=records.filter(r=>r.id!==currentId);checkLocalBase();persistLocal(next);records=next;retireDraft();clearEditor();render();status('로컬 기록을 삭제했습니다.');}catch(err){status((err.message||'삭제 저장 실패')+' 기존 화면과 입력은 유지됩니다.');}return;}
+    if(localMode){try{const next=records.filter(r=>r.id!==currentId);checkLocalBase();persistLocal(next);records=next;const cleanup=retireDraft();clearEditor();render();status('로컬 기록을 삭제했습니다.');await cleanup;}catch(err){status((err.message||'삭제 저장 실패')+' 기존 화면과 입력은 유지됩니다.');}return;}
     await cloudWrite(true);
   }
   function download(name,text,mime) {
@@ -652,7 +654,7 @@
     };
     el('draftPick').onclick=pickDraft;
     el('draftOn').onchange=()=>{if(!draftOn()&&(dirty||imageWorking)){el('draftOn').checked=true;dNote('편집 중에는 임시저장을 끌 수 없습니다. 기록을 저장하거나 임시본을 폐기한 뒤 변경하세요.');return;}if(draftOn()&&dirty)collect();else dNote(draftOn()?'임시저장 대기':'임시저장 꺼짐 (이 화면)');};
-    window.addEventListener('pagehide',boundary);
+    window.addEventListener('pagehide',e=>{boundary();if(!e?.persisted)unpin();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')boundary();});
     window.addEventListener('beforeunload',e=>{if((dirty&&(!draftOn()||!(draft?draft.full&&draft.journalOK&&!draft.pending&&!draft.uncertainty:source&&!uncertainty)))||busy||imageWorking){e.preventDefault();e.returnValue='';}});
     window.addEventListener('offline',()=>cloudError('오프라인입니다. 입력은 유지되지만 클라우드 저장되지 않습니다. 화면을 닫기 전 TXT로 보관하세요.'));
