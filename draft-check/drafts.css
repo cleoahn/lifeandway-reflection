@@ -1,0 +1,3 @@
+/* Extend the existing burgundy palette; inherit the editor typography. */
+.draft-panel{border:1px solid #d9bdc5;border-radius:12px;background:#faf4f5;padding:.7rem 1rem;margin:.75rem 0;color:#5c2939}
+.draft-tools,.draft-row{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap}.draft-tools{justify-content:space-between}.draft-tools label{display:inline-flex;align-items:center;gap:.4rem}.draft-tools input{accent-color:#78364a;width:auto}.draft-panel p{margin:.35rem 0}.draft-row{padding:.5rem 0;border-bottom:1px solid #d9bdc5}.draft-row span{flex:1 1 12rem;overflow-wrap:anywhere}#draftDialog{max-height:80vh;overflow:auto}

@@ -1,0 +1,1 @@
+window.__LW_ENABLE_TESTS=true;
